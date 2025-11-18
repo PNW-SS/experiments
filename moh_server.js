@@ -202,13 +202,16 @@ server.on('message', (msg, rinfo) => {
                 'a=ptime:20'
             ].join('\r\n');
 
-            // Add rport and received parameters to Via for NAT traversal
+            // Add rport and received parameters to Via for NAT traversal (only if requested)
             let viaWithParams = existingCall.via;
-            if (!viaWithParams.includes('received=')) {
-                viaWithParams += `;received=${rinfo.address}`;
+            // Add rport value if client included rport parameter (even without value)
+            if (viaWithParams.includes('rport') && !viaWithParams.includes('rport=')) {
+                viaWithParams = viaWithParams.replace('rport', `rport=${rinfo.port}`);
             }
-            if (!viaWithParams.includes('rport=')) {
-                viaWithParams += `;rport=${rinfo.port}`;
+            // Add received parameter if Via IP differs from actual source
+            const viaIpMatch = viaWithParams.match(/SIP\/2\.0\/\w+ ([\d.]+):/);
+            if (viaIpMatch && viaIpMatch[1] !== rinfo.address && !viaWithParams.includes('received=')) {
+                viaWithParams += `;received=${rinfo.address}`;
             }
 
             const response = [
@@ -218,7 +221,7 @@ server.on('message', (msg, rinfo) => {
                 `To: ${existingCall.to};tag=${existingCall.toTag}`,
                 `Call-ID: ${existingCall.callId}`,
                 `CSeq: ${existingCall.cseq}`,
-                'Contact: <sip:moh@' + YOUR_SERVER_IP + ':' + SIP_PORT + '>',
+                'Contact: <sip:' + YOUR_SERVER_IP + ':' + SIP_PORT + '>',
                 'Allow: INVITE, ACK, BYE, CANCEL',
                 'Supported: replaces',
                 'Content-Type: application/sdp',
@@ -316,15 +319,16 @@ server.on('message', (msg, rinfo) => {
             'a=ptime:20'
         ].join('\r\n');
 
-        // Add rport and received parameters to Via for NAT traversal
+        // Add rport and received parameters to Via for NAT traversal (only if requested)
         let viaWithParams = callInfo.via;
-        // Add received parameter if source IP differs from Via IP, or always for safety
-        if (!viaWithParams.includes('received=')) {
-            viaWithParams += `;received=${rinfo.address}`;
+        // Add rport value if client included rport parameter (even without value)
+        if (viaWithParams.includes('rport') && !viaWithParams.includes('rport=')) {
+            viaWithParams = viaWithParams.replace('rport', `rport=${rinfo.port}`);
         }
-        // Add rport parameter with actual source port
-        if (!viaWithParams.includes('rport=')) {
-            viaWithParams += `;rport=${rinfo.port}`;
+        // Add received parameter if Via IP differs from actual source
+        const viaIpMatch = viaWithParams.match(/SIP\/2\.0\/\w+ ([\d.]+):/);
+        if (viaIpMatch && viaIpMatch[1] !== rinfo.address && !viaWithParams.includes('received=')) {
+            viaWithParams += `;received=${rinfo.address}`;
         }
 
         const response = [
@@ -334,7 +338,7 @@ server.on('message', (msg, rinfo) => {
             `To: ${callInfo.to};tag=${toTag}`,
             `Call-ID: ${callInfo.callId}`,
             `CSeq: ${callInfo.cseq}`,
-            'Contact: <sip:moh@' + YOUR_SERVER_IP + ':' + SIP_PORT + '>',
+            'Contact: <sip:' + YOUR_SERVER_IP + ':' + SIP_PORT + '>',
             'Allow: INVITE, ACK, BYE, CANCEL',
             'Supported: replaces',
             'Content-Type: application/sdp',
