@@ -152,6 +152,7 @@ server.on('message', (msg, rinfo) => {
     // Log all incoming messages
     const firstLine = msgStr.split('\r\n')[0];
     console.log(`\n>>> Received from ${rinfo.address}:${rinfo.port}: ${firstLine}`);
+    console.log(`>>> Message starts with: "${msgStr.substring(0, 20)}"`);
 
     // Basic validation
     if (msgStr.length > 65535) {
@@ -174,10 +175,13 @@ server.on('message', (msg, rinfo) => {
         console.log('===== END INVITE =====');
 
         // Check if this is a retransmission of an existing call
+        // Per RFC 3261, retransmissions have same branch parameter in Via
         const existingCall = activeCalls.get(callId);
         const currentCSeq = getHeaderValue(headers, 'CSeq');
         const currentVia = getHeaderValue(headers, 'Via');
-        if (existingCall && existingCall.cseq === currentCSeq && existingCall.via === currentVia) {
+        const currentBranch = currentVia ? currentVia.match(/branch=([^;]+)/) : null;
+        const existingBranch = existingCall && existingCall.via ? existingCall.via.match(/branch=([^;]+)/) : null;
+        if (existingCall && existingCall.cseq === currentCSeq && currentBranch && existingBranch && currentBranch[1] === existingBranch[1]) {
             console.log(`[${callId}] INVITE retransmission detected - resending 200 OK`);
 
             // Reset ACK timeout since we're retransmitting the 200 OK
