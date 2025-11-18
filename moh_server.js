@@ -427,11 +427,7 @@ server.on('message', (msg, rinfo) => {
         console.log(response);
         console.log('===== END 200 OK =====');
         sendSipResponse(response, rinfo.port, rinfo.address, callId);
-        console.log(`[${callId}] Sent 200 OK with RTP port ${serverRtpPort}. Starting FFmpeg immediately...`);
-
-        // Start FFmpeg immediately after sending 200 OK (don't wait for ACK)
-        // This is acceptable since SDP negotiation is complete
-        startFFmpegStream(callInfo);
+        console.log(`[${callId}] Sent 200 OK with RTP port ${serverRtpPort}. Waiting for ACK...`);
     }
 
     else if (msgStr.startsWith('ACK')) {
