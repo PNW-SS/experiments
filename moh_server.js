@@ -7,8 +7,8 @@ const fs = require('fs');
 ffmpeg.setFfmpegPath(ffmpegPath);
 
 // --- ⬇️ CONFIGURATION ⬇️ ---
-const YOUR_SERVER_IP = '192.168.1.35';
-const YOUR_AUDIO_FILE = 'C:\\Users\\Lenovo\\Downloads\\moh_server\\weezies_or_dir_old.protected.mp3';
+const YOUR_SERVER_IP = '46.62.213.117';
+const YOUR_AUDIO_FILE = './audio.mp3';
 const SIP_PORT = 5060;
 const RTP_PORT_START = 10000;
 const RTP_PORT_END = 20000;
