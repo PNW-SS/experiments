@@ -202,9 +202,18 @@ server.on('message', (msg, rinfo) => {
                 'a=ptime:20'
             ].join('\r\n');
 
+            // Add rport and received parameters to Via for NAT traversal
+            let viaWithParams = existingCall.via;
+            if (!viaWithParams.includes('received=')) {
+                viaWithParams += `;received=${rinfo.address}`;
+            }
+            if (!viaWithParams.includes('rport=')) {
+                viaWithParams += `;rport=${rinfo.port}`;
+            }
+
             const response = [
                 `SIP/2.0 200 OK`,
-                `Via: ${existingCall.via}`,
+                `Via: ${viaWithParams}`,
                 `From: ${existingCall.from}`,
                 `To: ${existingCall.to};tag=${existingCall.toTag}`,
                 `Call-ID: ${existingCall.callId}`,
@@ -307,9 +316,20 @@ server.on('message', (msg, rinfo) => {
             'a=ptime:20'
         ].join('\r\n');
 
+        // Add rport and received parameters to Via for NAT traversal
+        let viaWithParams = callInfo.via;
+        // Add received parameter if source IP differs from Via IP, or always for safety
+        if (!viaWithParams.includes('received=')) {
+            viaWithParams += `;received=${rinfo.address}`;
+        }
+        // Add rport parameter with actual source port
+        if (!viaWithParams.includes('rport=')) {
+            viaWithParams += `;rport=${rinfo.port}`;
+        }
+
         const response = [
             `SIP/2.0 200 OK`,
-            `Via: ${callInfo.via}`,
+            `Via: ${viaWithParams}`,
             `From: ${callInfo.from}`,
             `To: ${callInfo.to};tag=${toTag}`,
             `Call-ID: ${callInfo.callId}`,
