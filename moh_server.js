@@ -146,6 +146,75 @@ function sendSipResponse(response, port, address, callId) {
     });
 }
 
+function startFFmpegStream(call) {
+    const callId = call.callId;
+
+    if (call.ffmpegProcess) {
+        console.log(`[${callId}] FFmpeg already running - skipping`);
+        return;
+    }
+
+    const rtpUrl = `rtp://${call.clientRtpIp}:${call.clientRtpPort}`;
+    console.log(`[${callId}] Starting FFmpeg stream to ${rtpUrl}...`);
+
+    try {
+        const ffmpegProc = ffmpeg(YOUR_AUDIO_FILE)
+            .inputOptions(['-re', '-stream_loop', '-1'])
+            .noVideo()
+            .audioFrequency(8000)
+            .audioChannels(1)
+            .audioCodec('pcm_mulaw')
+            .format('rtp')
+            .outputOptions([
+                '-localaddr', `${YOUR_SERVER_IP}`,
+                '-localport', `${call.serverRtpPort}`
+            ])
+            .on('start', (cmd) => {
+                console.log(`[${callId}] FFmpeg started: ${cmd}`);
+                // Verify process is still alive after startup
+                setTimeout(() => {
+                    if (call.ffmpegProcess && call.ffmpegProcess.killed) {
+                        console.error(`[${callId}] FFmpeg process died immediately after startup`);
+                        cleanupCall(callId, 'FFmpeg immediate crash');
+                    }
+                }, 500);
+            })
+            .on('error', (err) => {
+                console.error(`[${callId}] FFmpeg error:`, err.message);
+                // Only cleanup if call still exists
+                if (activeCalls.has(callId)) {
+                    cleanupCall(callId, 'FFmpeg error');
+                }
+            })
+            .on('end', () => {
+                console.log(`[${callId}] FFmpeg stream finished.`);
+                // Only cleanup if call still exists
+                if (activeCalls.has(callId)) {
+                    cleanupCall(callId, 'stream ended');
+                }
+            })
+            .save(rtpUrl);
+
+        // Store the underlying FFmpeg process for proper cleanup
+        call.ffmpegProcess = ffmpegProc.ffmpegProc;
+
+        // Handle process exit events
+        if (call.ffmpegProcess) {
+            call.ffmpegProcess.on('exit', (code, signal) => {
+                console.log(`[${callId}] FFmpeg process exited with code ${code}, signal ${signal}`);
+                if (activeCalls.has(callId) && code !== 0 && code !== null) {
+                    cleanupCall(callId, `FFmpeg exit code ${code}`);
+                }
+            });
+        }
+
+        activeCalls.set(callId, call);
+    } catch (err) {
+        console.error(`[${callId}] Failed to start FFmpeg:`, err.message);
+        cleanupCall(callId, 'FFmpeg startup failed');
+    }
+}
+
 server.on('message', (msg, rinfo) => {
     const msgStr = msg.toString();
 
@@ -355,7 +424,11 @@ server.on('message', (msg, rinfo) => {
         console.log(response);
         console.log('===== END 200 OK =====');
         sendSipResponse(response, rinfo.port, rinfo.address, callId);
-        console.log(`[${callId}] Sent 200 OK with RTP port ${serverRtpPort}. Waiting for ACK.`);
+        console.log(`[${callId}] Sent 200 OK with RTP port ${serverRtpPort}. Starting FFmpeg immediately...`);
+
+        // Start FFmpeg immediately after sending 200 OK (don't wait for ACK)
+        // This is acceptable since SDP negotiation is complete
+        startFFmpegStream(callInfo);
     }
 
     else if (msgStr.startsWith('ACK')) {
@@ -364,75 +437,18 @@ server.on('message', (msg, rinfo) => {
         console.log('===== END ACK =====');
 
         const call = activeCalls.get(callId);
-        if (call && !call.ffmpegProcess) {
-            console.log(`[${callId}] Received ACK. Starting FFmpeg stream...`);
+        if (call) {
+            console.log(`[${callId}] Received ACK`);
 
             // Clear the ACK timeout
             if (call.ackTimeout) {
                 clearTimeout(call.ackTimeout);
                 call.ackTimeout = null;
+                console.log(`[${callId}] ACK timeout cleared`);
             }
 
-            const rtpUrl = `rtp://${call.clientRtpIp}:${call.clientRtpPort}`;
-
-            try {
-                const ffmpegProc = ffmpeg(YOUR_AUDIO_FILE)
-                    .inputOptions(['-re', '-stream_loop', '-1'])
-                    .noVideo()
-                    .audioFrequency(8000)
-                    .audioChannels(1)
-                    .audioCodec('pcm_mulaw')
-                    .format('rtp')
-                    .outputOptions([
-                        '-localaddr', `${YOUR_SERVER_IP}`,
-                        '-localport', `${call.serverRtpPort}`
-                    ])
-                    .on('start', (cmd) => {
-                        console.log(`[${callId}] FFmpeg started: ${cmd}`);
-                        // Verify process is still alive after startup
-                        setTimeout(() => {
-                            if (call.ffmpegProcess && call.ffmpegProcess.killed) {
-                                console.error(`[${callId}] FFmpeg process died immediately after startup`);
-                                cleanupCall(callId, 'FFmpeg immediate crash');
-                            }
-                        }, 500);
-                    })
-                    .on('error', (err) => {
-                        console.error(`[${callId}] FFmpeg error:`, err.message);
-                        // Only cleanup if call still exists
-                        if (activeCalls.has(callId)) {
-                            cleanupCall(callId, 'FFmpeg error');
-                        }
-                    })
-                    .on('end', () => {
-                        console.log(`[${callId}] FFmpeg stream finished.`);
-                        // Only cleanup if call still exists
-                        if (activeCalls.has(callId)) {
-                            cleanupCall(callId, 'stream ended');
-                        }
-                    })
-                    .save(rtpUrl);
-
-                // Store the underlying FFmpeg process for proper cleanup
-                call.ffmpegProcess = ffmpegProc.ffmpegProc;
-
-                // Handle process exit events
-                if (call.ffmpegProcess) {
-                    call.ffmpegProcess.on('exit', (code, signal) => {
-                        console.log(`[${callId}] FFmpeg process exited with code ${code}, signal ${signal}`);
-                        if (activeCalls.has(callId) && code !== 0 && code !== null) {
-                            cleanupCall(callId, `FFmpeg exit code ${code}`);
-                        }
-                    });
-                }
-
-                activeCalls.set(callId, call);
-            } catch (err) {
-                console.error(`[${callId}] Failed to start FFmpeg:`, err.message);
-                cleanupCall(callId, 'FFmpeg startup failed');
-            }
-        } else if (call && call.ffmpegProcess) {
-            console.log(`[${callId}] Received duplicate ACK (FFmpeg already running) - ignoring`);
+            // Start FFmpeg if not already started (in case ACK arrives after immediate start)
+            startFFmpegStream(call);
         } else {
             console.warn(`[${callId}] Received ACK for unknown call - ignoring`);
         }
