@@ -333,7 +333,10 @@ server.on('message', (msg, rinfo) => {
             return;
         }
 
-        const clientRtpIp = getSdpConnectionIp(sdp) || rinfo.address;
+        // Get client RTP IP from SDP, but treat 0.0.0.0 as invalid (use source IP instead)
+        const sdpIp = getSdpConnectionIp(sdp);
+        const clientRtpIp = (sdpIp && sdpIp !== '0.0.0.0') ? sdpIp : rinfo.address;
+        console.log(`[${callId}] Client RTP endpoint: ${clientRtpIp}:${clientRtpPort} (SDP had: ${sdpIp || 'none'})`);
 
         // Allocate unique RTP port for this call
         const serverRtpPort = allocateRtpPort();
